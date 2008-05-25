@@ -33,12 +33,13 @@ class rss2twit:
 		for e in entries:
 			if self.isEntPub(e):
 				if debug: print "----\n"
+				elink = shorten(e.link)
 				if self.feedtag == False:
-					txt = ("%s - %s [%s]" % e.title, blurb(e.value), shorten(e.link))
+					txt = ("%s - %s [%s]" % e.title, blurb(e.value, 140 - (len(e.title) + len(elink) + 6)), elink)
 				else:
 					if self.feedtag == '':
 						self.feedtag = "New post from %s" % self.feedtitle
-					txt = ("%s: %s - %s [%s]" % e.feedtag, e.title, blurb(e.value), shorten(e.link))
+					txt = ("%s: %s - %s [%s]" % e.feedtag, e.title, blurb(e.value, 140 - (len(e.title) + len(elink) + len(e.feedtag) + 8)), elink)
 				if debug: print "Tweeting: %s" % txt
 				s = self.twit.PostUpdate(txt)
 				if debug: print "Status: %s" % s.text
@@ -61,9 +62,20 @@ class rss2twit:
 		req = urllib2.Request(apiUrl, data)
 		response = urllib2.urlopen(req)
 		return response.read()
+		
+	def blurb(self, text, length, addDots = True):
+		"""Shorten's text to length by words"""
+		if len(text) < length:
+			return text
+		else:
+			(t,u,v) = text.rpartition(' ')
+			if addDots == True:
+				return self.blurb(t, length - 3, False) + "..."
+			else:
+				return self.blurb(t, length, False)
 	
-	def go():
-		entries = getFeed(2)
-		postTweet(entries)
+	def go(self):
+		entries = self.getFeed(2)
+		self.postTweet(entries)
 	
 
