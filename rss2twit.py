@@ -9,44 +9,61 @@ class rss2twit:
 		self.feedurl = feedurl
 		self.twit = twitter.Api()
 		self.debug = debug
+		self.feedtitle = ''
 		
 		self.twit.SetCredentials(username, password)	
-		if (os.path.isdir(self.filepath)):
+		if os.path.isdir(self.filepath):
 			self.filepath = os.path.join(self.filepath, hashlib.sha1(self.feedurl).hexdigest())
 		if os.path.exists(self.filepath):
-			self.itemcache = pickle.load(file(self.filepath, 'r+b'))
+			self.entryCache = pickle.load(file(self.filepath, 'r+b'))
 		else:
-			self.itemcache = {} 
+			self.entryCache = {} 
 	
-# TODO 
-	def getLatestFeedItems(self, itemLimit = 0):
-		pass
-#		feed=feedparser.parse(self.feedurl);
-#		it=feed["items"]
-#		if(itemLimit > 0):
-#			it=it[0:itemLimit]
-#		return it
+	def getFeed(self, limit = 0):
+		feed = feedparser.parse(self.feedurl);
+		self.feedtitle = feed.feed.title
+		e = feed.entries
+		if limit > 0:
+			e = e[0:limit]
+		return e
+	
+# post format: Tag: title - blurb... [url]
+	def postTweet(self, entries):
+		p = 0
+		for e in entries:
+			if self.isEntPub(e):
+				if debug: print "----\n"
+				if self.feedtag == False:
+					txt = ("%s - %s [%s]" % e.title, blurb(e.value), shorten(e.link))
+				else:
+					if self.feedtag == '':
+						self.feedtag = "New post from %s" % self.feedtitle
+					txt = ("%s: %s - %s [%s]" % e.feedtag, e.title, blurb(e.value), shorten(e.link))
+				if debug: print "Tweeting: %s" % txt
+				s = self.twit.PostUpdate(txt)
+				if debug: print "Status: %s" % s.text
+				p += 1
+		if debug: print "Published: %s\nOld: %s\nTotal: %s" % p, len(entries) - p, len(entries)
+	
+	def isEntPub (self, entry):
+		entryVal = hashlib.sha1(entry.value).hexdigest()
+		if self.entryCache.has_key(entryVal):
+			return True
+		else:
+			self.entryCache[entryVal] = entry.link
+			pickle.dump(self.entryCache, file(self.filepath, 'w+b'))
+			return False
+	
+	def shorten(self, url):
+ 		apiUrl = 'http://tweetburner.com/links'
+		values = {'link[url]' : url,}
+		data = urllib.urlencode(values)
+		req = urllib2.Request(apiUrl, data)
+		response = urllib2.urlopen(req)
+		return response.read()
+	
+	def go():
+		entries = getFeed(2)
+		postTweet(entries)
+	
 
-# TODO 
-	def twitIt(self, items):
-		pass
-#		pItems=0
-#		for it in items:
-#			if self.itemPublished(it) == None:
-#				print "----\n"
-#				txt=it["title"] +" "+self.tiny(it["link"])
-#				print txt
-#				status = self.twApi.PostUpdate(txt)
-#				print "status: ", status.text
-#				pItems=pItems+1
-#		print "Total items: ", len(items)
-#		print "published: ",pItems
-#		print "old stuff: ",len(items) - pItems
-
-# TODO
-	def itemPublished (self, item):
-		pass
-
-# TODO 
-	def tiny(self, url):
- 		pass
