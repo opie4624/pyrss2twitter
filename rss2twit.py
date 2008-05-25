@@ -9,6 +9,7 @@ class rss2twit:
 		self.feedurl = feedurl
 		self.twit = twitter.Api()
 		self.debug = debug
+		self.feedtag = feedtag
 		self.feedtitle = ''
 		
 		self.twit.SetCredentials(username, password)	
@@ -31,29 +32,30 @@ class rss2twit:
 	def postTweet(self, entries):
 		p = 0
 		for e in entries:
-			if self.isEntPub(e):
-				if debug: print "----\n"
-				elink = shorten(e.link)
+			if self.debug: print "----\nTitle: %s\nStatus: %s" % (e.title, self.canPub(e, False))
+			if self.canPub(e):
+				elink = self.shorten(e.link)
 				if self.feedtag == False:
-					txt = ("%s - %s [%s]" % e.title, blurb(e.value, 140 - (len(e.title) + len(elink) + 6)), elink)
+					txt = ("%s: %s [%s]" % (e.title, self.blurb(e.summary, 140 - (len(e.title) + len(elink) + 5)), elink))
 				else:
 					if self.feedtag == '':
 						self.feedtag = "New post from %s" % self.feedtitle
-					txt = ("%s: %s - %s [%s]" % e.feedtag, e.title, blurb(e.value, 140 - (len(e.title) + len(elink) + len(e.feedtag) + 8)), elink)
-				if debug: print "Tweeting: %s" % txt
-				s = self.twit.PostUpdate(txt)
-				if debug: print "Status: %s" % s.text
+					txt = ("%s: %s: %s [%s]" % (self.feedtag, e.title, self.blurb(e.summary, 140 - (len(e.title) + len(elink) + len(self.feedtag) + 7)), elink))
+				if self.debug: print "Tweeting: %s" % txt
+				#s = self.twit.PostUpdate(txt)
+				#if self.debug: print "Status: %s" % s.text
 				p += 1
-		if debug: print "Published: %s\nOld: %s\nTotal: %s" % p, len(entries) - p, len(entries)
+		if self.debug: print "Published: %s\nOld: %s\nTotal: %s" % (p, len(entries) - p, len(entries))
 	
-	def isEntPub (self, entry):
-		entryVal = hashlib.sha1(entry.value).hexdigest()
+	def canPub (self, entry, store=True):
+		entryVal = hashlib.sha1(entry.summary).hexdigest()
 		if self.entryCache.has_key(entryVal):
-			return True
-		else:
-			self.entryCache[entryVal] = entry.link
-			pickle.dump(self.entryCache, file(self.filepath, 'w+b'))
 			return False
+		else:
+			if store==True:
+				self.entryCache[entryVal] = entry.link
+				pickle.dump(self.entryCache, file(self.filepath, 'w+b'))
+			return True
 	
 	def shorten(self, url):
  		apiUrl = 'http://tweetburner.com/links'
@@ -75,7 +77,7 @@ class rss2twit:
 				return self.blurb(t, length, False)
 	
 	def go(self):
-		entries = self.getFeed(2)
+		entries = self.getFeed()
 		self.postTweet(entries)
 	
 
