@@ -42,8 +42,8 @@ class rss2twit:
 						self.feedtag = "New post from %s" % self.feedtitle
 					txt = ("%s: %s: %s [%s]" % (self.feedtag, e.title, self.blurb(e.summary, 140 - (len(e.title) + len(elink) + len(self.feedtag) + 7)), elink))
 				if self.debug: print "Tweeting: %s" % txt
-				#s = self.twit.PostUpdate(txt)
-				#if self.debug: print "Status: %s" % s.text
+				s = self.twit.PostUpdate(txt)
+				if self.debug: print "Status: %s" % s.text
 				p += 1
 		if self.debug: print "Published: %s\nOld: %s\nTotal: %s" % (p, len(entries) - p, len(entries))
 	
