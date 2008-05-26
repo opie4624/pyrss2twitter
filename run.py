@@ -33,6 +33,6 @@ for m in gd:
 		twit.DestroyDirectMessage(m.id)
 	else:
 		print "Received message ("+m.text+") from member "+m.sender_screen_name+"."
-		twit.PostUpdate(userdb[m.sender_screen_name]+" @"+m.sender_screen_name+" says: " + forums.blurb(m.text, 9+len(userdb[m.sender_screen_name])+len(m.sender_screen_name)))
-		print "Tweeting: "+userdb[m.sender_screen_name]+" @"+m.sender_screen_name+" says: " + forums.blurb(m.text, 9+len(userdb[m.sender_screen_name])+len(m.sender_screen_name))
+		twit.PostUpdate(userdb[m.sender_screen_name]+" @"+m.sender_screen_name+" says: " + forums.blurb(m.text, 140-(9+len(userdb[m.sender_screen_name])+len(m.sender_screen_name))))
+		print "Tweeting: "+userdb[m.sender_screen_name]+" @"+m.sender_screen_name+" says: " + forums.blurb(m.text, 140-(9+len(userdb[m.sender_screen_name])+len(m.sender_screen_name)))
 		twit.DestroyDirectMessage(m.id)
