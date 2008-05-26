@@ -32,8 +32,10 @@ class rss2twit:
 	def postTweet(self, entries):
 		p = 0
 		for e in entries:
-			if self.debug: print "----\nTitle: %s\nStatus: %s" % (e.title, self.canPub(e, False))
+#			if self.debug: print "----\nTitle: %s\nStatus: %s" % (e.title, self.canPub(e, False))
+			if self.debug: print "----"
 			if self.canPub(e):
+				if self.debug: print "Title: %s\nStatus: %s" % (e.title, self.canPub(e, False))
 				elink = self.shorten(e.link)
 				if self.feedtag == False:
 					txt = ("%s: %s [%s]" % (e.title, self.blurb(e.summary, 140 - (len(e.title) + len(elink) + 5)), elink))
