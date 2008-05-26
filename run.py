@@ -25,10 +25,14 @@ gd = twit.GetDirectMessages()
 
 for m in gd:
 	if userdb[m.sender_screen_name] == 'Banned':
+		print "Received message ("+ m.text +") from banned member "+ m.sender_screen_name + ", deleting."
 		twit.DestroyDirectMessage(m.id)
 	elif userdb[m.sender_screen_name] == 'Passive Member':
+		print "Received message ("+m.text+") from passive member "+ m.sender_screen_name +", sending note and deleting."
 		twit.PostDirectMessage(m.sender_screen_name, 'Sorry, only Full Members can make announcements.  http://twurl.nl/hqlm5t for membership details.')
 		twit.DestroyDirectMessage(m.id)
 	else:
+		print "Received message ("+m.text+") from member "+m.sender_screen_name+"."
 		twit.PostUpdate(userdb[m.sender_screen_name]+" @"+m.sender_screen_name+" says: " + forums.blurb(m.text, 9+len(userdb[m.sender_screen_name])+len(m.sender_screen_name)))
+		print "Tweeting: "+userdb[m.sender_screen_name]+" @"+m.sender_screen_name+" says: " + forums.blurb(m.text, 9+len(userdb[m.sender_screen_name])+len(m.sender_screen_name))
 		twit.DestroyDirectMessage(m.id)
