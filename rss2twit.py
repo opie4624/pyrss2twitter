@@ -1,16 +1,22 @@
 #!/usr/bin/env python
 
-# python rss reader -> twitter post
-import feedparser
-import pickle
+# System
 import os
 import sys
-import twitter
+import time
+import pickle
 import urllib, urllib2
 import hashlib
-from threading import Queue, Timer
+import threading, Queue
+# 3rd Party
+import twitter
 import sqlite3
 import memcache
+import feedparser
+
+# Constants
+DIRECT_MESSAGE_DELAY = 600
+RSS_FEED_DELAY = 60
 
 class rss2twit:
 	def __init__(self, feedurl, username, password, filepath = './', feedtag = "", debug=False):
@@ -93,7 +99,7 @@ class rss2twit:
 	
 
 
-class Serializer(Threading.Thread):
+class Serializer(threading.Thread):
 	def __init__(self, **kwds):
 		super(Serializer, self).__init__(**kwds)
 		self.setDaemon(1)
@@ -114,17 +120,21 @@ class Serializer(Threading.Thread):
 
 class rss2twitter():
 	"""Takes a tuple of RSS feeds and twitter credentials and reads one, posts to the other."""
-	def __init__(self, feeds, username, password, cacheDir = './'):
+	def __init__(self, username, password, feeds=None, cacheDir = './'):
 		self.feeds = feeds
 		self.timers = []
+		self.twitQueue = Serializer()
+		self.twitApi = twitter.Api(username=username, password=password)
 	
-	def doDirectMessages(self):
+	def doDirectMessages(self, timerIndex):
 		"""Process Direct Messages, queue posts"""
-		pass
+		self.timers[timerIndex]=threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, timerIndex)
+		self.timers[timerIndex].start()
 	
-	def doRSSFeed(self, feedUrl):
+	def doRSSFeed(self, timerIndex, feedUrl):
 		"""docstring for DoRSSFeed"""
-		pass
+		self.timers[timerIndex]=threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (timerIndex, feedUrl))
+		self.timers[timerIndex].start()
 	
 	def checkDirectMessages(self):
 		"""Check for new Direct Messages"""
@@ -145,9 +155,10 @@ class rss2twitter():
 	def run(self, doDirect=True, debug=False):
 		"""Start processing everything"""
 		if doDirect==True:
-			timers.append(Timer(600.0, doDirectMessages))
-		for f in self.feeds:
-			timers.append(Timer(60.0, doRSSFeed, f))
-		for t in timers:
-			t.start()
+			self.timers.append(threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, len(self.timers)))
+		if self.feeds is not None:
+			for f in self.feeds:
+				self.timers.append(threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (len(self.timers), f)))
+		for t in self.timers:
+			t.start()	
 	
