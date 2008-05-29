@@ -120,11 +120,23 @@ class Serializer(threading.Thread):
 
 class rss2twitter():
 	"""Takes a tuple of RSS feeds and twitter credentials and reads one, posts to the other."""
+		
+	timers = []
+	twitQueue = Serializer()
+	twitApi = twitter.Api()
+		
 	def __init__(self, username, password, feeds=None, cacheDir = './'):
 		self.feeds = feeds
-		self.timers = []
-		self.twitQueue = Serializer()
-		self.twitApi = twitter.Api(username=username, password=password)
+		self.twitApi.SetCredentials(username, password)
+		self.feedHistory = sqlite3.connect(os.path.join(cacheDir, 'db'))
+		
+		c = self.feedHistory.cursor()
+		c.execute('''create table if not exists users (username text primary key, title text)''')
+		if feeds is not None:
+			for f in feeds:
+				c.execute('''create table if not exists ''' + hashlib.sha1(f).hexdigest() + ''' (hash text primary key, date text)''')
+		self.feedHistory.commit()
+		c.close()
 	
 	def doDirectMessages(self, timerIndex):
 		"""Process Direct Messages, queue posts"""
@@ -132,7 +144,7 @@ class rss2twitter():
 		self.timers[timerIndex].start()
 	
 	def doRSSFeed(self, timerIndex, feedUrl):
-		"""docstring for DoRSSFeed"""
+		"""Process RSS Feed, queue posts for new items"""
 		self.timers[timerIndex]=threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (timerIndex, feedUrl))
 		self.timers[timerIndex].start()
 	
@@ -161,4 +173,19 @@ class rss2twitter():
 				self.timers.append(threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (len(self.timers), f)))
 		for t in self.timers:
 			t.start()	
+	
+	def wasPublished(self, feedTable, feedEntry, storeHistory=True):
+		"""Checks to see if a feed item has been previously published"""
+		c = self.feedHistory.cursor()
+		entryVal = hashlib.sha1(feedEntry.summary).hexdigest()
+		c.execute("""select date from ? where hash=?""", (feedTable, entryVal))
+		if len(c) > 0:
+			c.close()
+			return True
+		else:
+			if storeHistory is True:
+				c.execute("""insert into ? values(?, ?)""", (feedTable, entryVal, time.time())))
+				self.feedHistory.commit()
+			c.close()
+			return False
 	
