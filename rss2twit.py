@@ -8,8 +8,9 @@ import sys
 import twitter
 import urllib, urllib2
 import hashlib
-import threading, Queue
+from threading import Queue, Timer
 import sqlite3
+import memcache
 
 class rss2twit:
 	def __init__(self, feedurl, username, password, filepath = './', feedtag = "", debug=False):
@@ -115,7 +116,7 @@ class rss2twitter():
 	"""Takes a tuple of RSS feeds and twitter credentials and reads one, posts to the other."""
 	def __init__(self, feeds, username, password, cacheDir = './'):
 		self.feeds = feeds
-		self.
+		self.timers = []
 	
 	def doDirectMessages(self):
 		"""Process Direct Messages, queue posts"""
@@ -143,5 +144,10 @@ class rss2twitter():
 	
 	def run(self, doDirect=True, debug=False):
 		"""Start processing everything"""
-		pass
+		if doDirect==True:
+			timers.append(Timer(600.0, doDirectMessages))
+		for f in self.feeds:
+			timers.append(Timer(60.0, doRSSFeed, f))
+		for t in timers:
+			t.start()
 	
