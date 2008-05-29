@@ -1,7 +1,15 @@
 #!/usr/bin/env python
 
 # python rss reader -> twitter post
-import feedparser, pickle, os, sys, twitter, urllib, urllib2, hashlib
+import feedparser
+import pickle
+import os
+import sys
+import twitter
+import urllib, urllib2
+import hashlib
+import threading, Queue
+import sqlite3
 
 class rss2twit:
 	def __init__(self, feedurl, username, password, filepath = './', feedtag = "", debug=False):
@@ -83,3 +91,57 @@ class rss2twit:
 		self.postTweet(entries)
 	
 
+
+class Serializer(Threading.Thread):
+	def __init__(self, **kwds):
+		super(Serializer, self).__init__(**kwds)
+		self.setDaemon(1)
+		self.workRequestQueue = Queue.Queue()
+		self.resultQueue = Queue.Queue()
+		self.start()
+	
+	def apply(self, callable, *args, **kwds):
+		"""called by other threads as callable would be"""
+		self.workRequestQueue.put((callable, args, kwds))		
+		return self.resultQueue.get()
+	
+	def run(self):
+		while 1:
+			callable, args, kwds = self.workRequestQueue.get()
+			self.resultQueue.put(callable(*args, **kwds))
+	
+
+class rss2twitter():
+	"""Takes a tuple of RSS feeds and twitter credentials and reads one, posts to the other."""
+	def __init__(self, feeds, username, password, cacheDir = './'):
+		self.feeds = feeds
+		self.
+	
+	def doDirectMessages(self):
+		"""Process Direct Messages, queue posts"""
+		pass
+	
+	def doRSSFeed(self, feedUrl):
+		"""docstring for DoRSSFeed"""
+		pass
+	
+	def checkDirectMessages(self):
+		"""Check for new Direct Messages"""
+		pass
+	
+	def postTweet(self, msgText):
+		"""Post a Tweet"""
+		pass
+	
+	def sendDirectMessage(self, msgText):
+		"""Send a Direct Message"""
+		pass
+	
+	def deleteDirectMessage(self, msgID):
+		"""Delete a DirectMessage"""
+		pass
+	
+	def run(self, doDirect=True, debug=False):
+		"""Start processing everything"""
+		pass
+	
