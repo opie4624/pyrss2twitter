@@ -155,13 +155,19 @@ class rss2twitter():
 		c.execute('''create table if not exists users (username text primary key, title text)''')
 		if feeds is not None:
 			for f in feeds:
+				if self.debug is True:
+					print "creating table for %s" % f
 				c.execute('create table if not exists "%s" (hash text primary key, date text)' % hashlib.sha1(f).hexdigest())
 		conn.commit()
 		c.close()
 	
 	def doDirectMessages(self, timerIndex):
 		"""Process Direct Messages, queue posts"""
+		if self.debug is True:
+			print "creating new directmessage timer"
 		self.timers[timerIndex]=threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, (timerIndex,))
+		if self.debug is True:
+			print "starting new directmessage timer"
 		self.timers[timerIndex].start()
 	
 	def doRSSFeed(self, timerIndex, feedUrl):
@@ -171,30 +177,18 @@ class rss2twitter():
 		feed = feedparser.parse(feedUrl)
 		feedtitle = feed.feed.title
 		for e in feed.entries:
-			posted = False
 			if self.wasPublished(hashlib.sha1(feedUrl).hexdigest(), e) is not True:
 				tag = "New post from %s" % feedtitle
 				link = shorten(e.link)
 				txt = "%s: %s: %s [%s]" % (tag, e.title, blurb(e.summary, 140 - (len(e.title) + len(link) + len(tag) + 7)), link)
 				if self.debug:
 					print "----\n%s" % txt
-				else:
-					while posted is not True:
-						try:
-							self.twitQueue.apply(self.twitApi.PostUpdate, txt)
-						except urllib2.HTTPError, err:
-							errno = int(err.info().items()[0][1][0:3])
-							if errno == 401:
-								sleep(300)
-							elif errno == 502:
-								sleep(900)
-							elif errno == 503:
-								sleep(1800)
-							else:
-								raise twitter.TwitterError(err.info().items()[0][1])
-						else:
-							posted = True
+				self.postTweet(txt)
+		if self.debug is True:
+			print "Creating new rssfeed timer for %s" % feedUrl
 		self.timers[timerIndex]=threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (timerIndex, feedUrl))
+		if self.debug is True:
+			print "Starting new directmessage timer for %s" % feedUrl
 		self.timers[timerIndex].start()
 	
 	def checkDirectMessages(self):
@@ -203,7 +197,32 @@ class rss2twitter():
 	
 	def postTweet(self, msgText):
 		"""Post a Tweet"""
-		pass
+		posted = False
+		while posted is not True:
+			try:
+				if self.debug is True:
+					print "Queueing tweet"
+				self.twitQueue.apply(self.twitApi.PostUpdate, msgText)
+			except urllib2.HTTPError, err:
+				errno = int(err.info().items()[0][1][0:3])
+				if errno == 401:
+					if self.debug:
+						print "Rate limited, sleeping for 5 mins"
+					sleep(300)
+				elif errno == 502:
+					if self.debug:
+						print "Server upgrade, sleeping for 15 mins"
+					sleep(900)
+				elif errno == 503:
+					if self.debug:
+						print "Server busy, sleeping for 30 mins"
+					sleep(1800)
+				else:
+					raise twitter.TwitterError(err.info().items()[0][1])
+			else:
+				if self.debug is True:
+					print "Tweet posted"
+				posted = True
 	
 	def sendDirectMessage(self, msgText):
 		"""Send a Direct Message"""
@@ -217,11 +236,20 @@ class rss2twitter():
 		"""Start processing everything"""
 		self.debug = debug
 		if doDirect==True:
+			if self.debug is True:
+				print "Creating first directmessage timer as timer %s" % len(self.timers)
 			self.timers.append(threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, (len(self.timers),)))
 		if self.feeds is not None:
 			for f in self.feeds:
+				if self.debug is True:
+					print "Creating first rssfeed timer for %s as timer %s" % (f, len(self.timers),)
 				self.timers.append(threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (len(self.timers), f)))
+		if self.debug is True:
+			print "Creating first timestamp timer as timer %s" % len(self.timers)
+			self.timers.append(threading.Timer(5, self.printTimestamp, (len(self.timers),)))
 		for t in self.timers:
+			if self.debug is True:
+				print "Starting timer"
 			t.start()
 		try:
 			self.twitQueue.run()
@@ -234,15 +262,40 @@ class rss2twitter():
 		conn = sqlite3.connect(self.feedHistory)
 		c = conn.cursor()
 		entryVal = hashlib.sha1(feedEntry.summary).hexdigest()
+		if self.debug is True:
+			print "checking %s for published status" % feedEntry.title
 		c.execute('select date from "%s" where hash=?' % feedTable, (entryVal,))
 		if len(c.fetchall()) > 0:
 			c.close()
+			if self.debug is True:
+				print "published"
 			return True
 		else:
+			if self.debug is True:
+				print "unpublished"
 			if storeHistory is True:
+				if self.debug is True:
+					print "storing"
 				t = (entryVal, time.time(),)
 				c.execute('insert into "%s" values(?, ?)' % feedTable, t)
 				conn.commit()
 			c.close()
 			return False
+	
+	def printTimestamp(self, timerIndex, thisTime=-1.):
+		"""pretty print's a timestamp, optionally the time specified"""
+		print thisTime
+		if thisTime < 0:
+			print "Current Time: %s" % time.asctime()
+			if self.debug is True:
+				print "Queueing second timestamp print."
+			self.twitQueue.apply(self.printTimestamp, (timerIndex, time.time(),))
+			if self.debug is True:
+				print "Creating new timer."
+			self.timers[timerIndex]=threading.Timer(5, self.printTimestamp, (timerIndex,))
+			if self.debug is True:
+				print "Starting new timer."
+			self.timers[timerIndex].start()
+		else:
+			print "Queue'd Time: %s" % time.asctime(time.localtime(thisTime))
 	
