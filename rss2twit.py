@@ -5,7 +5,7 @@ import os
 import sys
 import time
 import pickle
-import urllib, urllib2
+import urllib, urllib2, httplib
 import hashlib
 import threading, Queue
 # 3rd Party
@@ -15,7 +15,7 @@ import memcache
 import feedparser
 
 # Constants
-DIRECT_MESSAGE_DELAY = 600
+DIRECT_MESSAGE_DELAY = 300
 RSS_FEED_DELAY = 60
 
 class rss2twit:
@@ -99,6 +99,25 @@ class rss2twit:
 	
 
 
+def shorten(url):
+	apiUrl = 'http://tweetburner.com/links'
+	values = {'link[url]' : url,}
+	data = urllib.urlencode(values)
+	req = urllib2.Request(apiUrl, data)
+	response = urllib2.urlopen(req)
+	return response.read()
+
+def blurb(text, length, addDots=True):
+	"""Reduces a text to length or less one word at a time, optionally adding..."""
+	if len(text) <= length:
+		return text
+	else:
+		(t,u,v) = text.rpartition(' ')
+		if addDots is True:
+			return '%s...' % blurb(t, length-3, False)
+		else:
+			return blurb(t, length, False)
+
 class Serializer(threading.Thread):
 	def __init__(self, **kwds):
 		super(Serializer, self).__init__(**kwds)
@@ -124,27 +143,57 @@ class rss2twitter():
 	timers = []
 	twitQueue = Serializer()
 	twitApi = twitter.Api()
+	debug = False
 		
 	def __init__(self, username, password, feeds=None, cacheDir = './'):
 		self.feeds = feeds
 		self.twitApi.SetCredentials(username, password)
-		self.feedHistory = sqlite3.connect(os.path.join(cacheDir, 'db'))
+		self.feedHistory = os.path.join(cacheDir, 'db')
 		
-		c = self.feedHistory.cursor()
+		conn = sqlite3.connect(self.feedHistory)
+		c = conn.cursor()
 		c.execute('''create table if not exists users (username text primary key, title text)''')
 		if feeds is not None:
 			for f in feeds:
-				c.execute('''create table if not exists ''' + hashlib.sha1(f).hexdigest() + ''' (hash text primary key, date text)''')
-		self.feedHistory.commit()
+				c.execute('create table if not exists "%s" (hash text primary key, date text)' % hashlib.sha1(f).hexdigest())
+		conn.commit()
 		c.close()
 	
 	def doDirectMessages(self, timerIndex):
 		"""Process Direct Messages, queue posts"""
-		self.timers[timerIndex]=threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, timerIndex)
+		self.timers[timerIndex]=threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, (timerIndex,))
 		self.timers[timerIndex].start()
 	
 	def doRSSFeed(self, timerIndex, feedUrl):
 		"""Process RSS Feed, queue posts for new items"""
+		if self.debug is True:
+			print "processing %s" % feedUrl
+		feed = feedparser.parse(feedUrl)
+		feedtitle = feed.feed.title
+		for e in feed.entries:
+			posted = False
+			if self.wasPublished(hashlib.sha1(feedUrl).hexdigest(), e) is not True:
+				tag = "New post from %s" % feedtitle
+				link = shorten(e.link)
+				txt = "%s: %s: %s [%s]" % (tag, e.title, blurb(e.summary, 140 - (len(e.title) + len(link) + len(tag) + 7)), link)
+				if self.debug:
+					print "----\n%s" % txt
+				else:
+					while posted is not True:
+						try:
+							self.twitQueue.apply(self.twitApi.PostUpdate, txt)
+						except urllib2.HTTPError, err:
+							errno = int(err.info().items()[0][1][0:3])
+							if errno == 401:
+								sleep(300)
+							elif errno == 502:
+								sleep(900)
+							elif errno == 503:
+								sleep(1800)
+							else:
+								raise twitter.TwitterError(err.info().items()[0][1])
+						else:
+							posted = True
 		self.timers[timerIndex]=threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (timerIndex, feedUrl))
 		self.timers[timerIndex].start()
 	
@@ -166,26 +215,34 @@ class rss2twitter():
 	
 	def run(self, doDirect=True, debug=False):
 		"""Start processing everything"""
+		self.debug = debug
 		if doDirect==True:
-			self.timers.append(threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, len(self.timers)))
+			self.timers.append(threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, (len(self.timers),)))
 		if self.feeds is not None:
 			for f in self.feeds:
 				self.timers.append(threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (len(self.timers), f)))
 		for t in self.timers:
-			t.start()	
+			t.start()
+		try:
+			self.twitQueue.run()
+		except KeyboardInterrupt:
+			for t in self.timers:
+				t.cancel()
 	
 	def wasPublished(self, feedTable, feedEntry, storeHistory=True):
 		"""Checks to see if a feed item has been previously published"""
-		c = self.feedHistory.cursor()
+		conn = sqlite3.connect(self.feedHistory)
+		c = conn.cursor()
 		entryVal = hashlib.sha1(feedEntry.summary).hexdigest()
-		c.execute("""select date from ? where hash=?""", (feedTable, entryVal))
-		if len(c) > 0:
+		c.execute('select date from "%s" where hash=?' % feedTable, (entryVal,))
+		if len(c.fetchall()) > 0:
 			c.close()
 			return True
 		else:
 			if storeHistory is True:
-				c.execute("""insert into ? values(?, ?)""", (feedTable, entryVal, time.time())))
-				self.feedHistory.commit()
+				t = (entryVal, time.time(),)
+				c.execute('insert into "%s" values(?, ?)' % feedTable, t)
+				conn.commit()
 			c.close()
 			return False
 	
