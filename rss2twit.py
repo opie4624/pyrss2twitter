@@ -99,7 +99,7 @@ class rss2twitter():
 				if self.debug:
 					print "----\n%s" % txt
 				#self.postTweet(txt)
-				threading.Thread(None, self.postTweet, (txt,)).start()
+				threading.Thread(target=self.postTweet, args=(txt,)).start()
 		self.timers[timerIndex]=threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (timerIndex, feedUrl))
 		self.timers[timerIndex].start()
 	
@@ -111,11 +111,11 @@ class rss2twitter():
 		"""Post a Tweet"""
 		posted = False
 		while posted is not True:
+			if self.debug is True:
+				print "Queueing tweet %s" % hashlib.sha1(msgText).hexdigest()[0:6]
 			try:
-				if self.debug is True:
-					print "Queueing tweet %s" % hashlib.sha1(msgText).hexdigest()[0:6]
 				self.twitQueue.apply(self.twitApi.PostUpdate, msgText)
-			except urllib2.HTTPError, err:
+			except HTTPError, err:
 				errno = int(err.info().items()[0][1][0:3])
 				if errno == 401:
 					if self.debug:
@@ -191,7 +191,7 @@ class rss2twitter():
 	
 	def printTimestamp(self, timerIndex):
 		"""pretty print's a timestamp, optionally the time specified"""
-		print "Current Time: %s" % time.asctime()
+		print "Current Time: %s | Queue Size: %s" % (time.asctime(), self.twitQueue.workRequestQueue.qsize())
 		self.timers[timerIndex]=threading.Timer(5, self.printTimestamp, (timerIndex,))
 		self.timers[timerIndex].start()
 	
