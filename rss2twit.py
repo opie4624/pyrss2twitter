@@ -18,87 +18,6 @@ import feedparser
 DIRECT_MESSAGE_DELAY = 300
 RSS_FEED_DELAY = 60
 
-class rss2twit:
-	def __init__(self, feedurl, username, password, filepath = './', feedtag = "", debug=False):
-		self.filepath = filepath
-		self.feedurl = feedurl
-		self.twit = twitter.Api()
-		self.debug = debug
-		self.feedtag = feedtag
-		self.feedtitle = ''
-		
-		self.twit.SetCredentials(username, password)	
-		if os.path.isdir(self.filepath):
-			self.filepath = os.path.join(self.filepath, hashlib.sha1(self.feedurl).hexdigest())
-		if os.path.exists(self.filepath):
-			self.entryCache = pickle.load(file(self.filepath, 'r+b'))
-		else:
-			self.entryCache = {} 
-	
-	def getFeed(self, limit = 0):
-		feed = feedparser.parse(self.feedurl);
-		self.feedtitle = feed.feed.title
-		e = feed.entries
-		if limit > 0:
-			e = e[0:limit]
-		return e
-	
-# post format: Tag: title - blurb... [url]
-	def postTweet(self, entries):
-		p = 0
-		for e in entries:
-#			if self.debug: print "----\nTitle: %s\nStatus: %s" % (e.title, self.canPub(e, False))
-			if self.debug: print "----"
-			if self.canPub(e):
-				if self.debug: print "Title: %s\nStatus: %s" % (e.title, self.canPub(e, False))
-				elink = self.shorten(e.link)
-				if self.feedtag == False:
-					txt = ("%s: %s [%s]" % (e.title, self.blurb(e.summary, 140 - (len(e.title) + len(elink) + 5)), elink))
-				else:
-					if self.feedtag == '':
-						self.feedtag = "New post from %s" % self.feedtitle
-					txt = ("%s: %s: %s [%s]" % (self.feedtag, e.title, self.blurb(e.summary, 140 - (len(e.title) + len(elink) + len(self.feedtag) + 7)), elink))
-				if self.debug: print "Tweeting: %s" % txt
-				s = self.twit.PostUpdate(txt)
-				if self.debug: print "Status: %s" % s.text
-				p += 1
-		if self.debug: print "Published: %s\nOld: %s\nTotal: %s" % (p, len(entries) - p, len(entries))
-	
-	def canPub (self, entry, store=True):
-		entryVal = hashlib.sha1(entry.summary).hexdigest()
-		if self.entryCache.has_key(entryVal):
-			return False
-		else:
-			if store==True:
-				self.entryCache[entryVal] = entry.link
-				pickle.dump(self.entryCache, file(self.filepath, 'w+b'))
-			return True
-	
-	def shorten(self, url):
- 		apiUrl = 'http://tweetburner.com/links'
-		values = {'link[url]' : url,}
-		data = urllib.urlencode(values)
-		req = urllib2.Request(apiUrl, data)
-		response = urllib2.urlopen(req)
-		return response.read()
-		
-	def blurb(self, text, length, addDots = True):
-		"""Shorten's text to length by words"""
-		if len(text) < length:
-			return text
-		else:
-			(t,u,v) = text.rpartition(' ')
-			if addDots == True:
-				return self.blurb(t, length - 3, False) + "..."
-			else:
-				return self.blurb(t, length, False)
-	
-	def go(self):
-		entries = self.getFeed()
-		self.postTweet(entries)
-	
-
-
 def shorten(url):
 	apiUrl = 'http://tweetburner.com/links'
 	values = {'link[url]' : url,}
@@ -163,11 +82,7 @@ class rss2twitter():
 	
 	def doDirectMessages(self, timerIndex):
 		"""Process Direct Messages, queue posts"""
-		if self.debug is True:
-			print "creating new directmessage timer"
 		self.timers[timerIndex]=threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, (timerIndex,))
-		if self.debug is True:
-			print "starting new directmessage timer"
 		self.timers[timerIndex].start()
 	
 	def doRSSFeed(self, timerIndex, feedUrl):
@@ -183,12 +98,9 @@ class rss2twitter():
 				txt = "%s: %s: %s [%s]" % (tag, e.title, blurb(e.summary, 140 - (len(e.title) + len(link) + len(tag) + 7)), link)
 				if self.debug:
 					print "----\n%s" % txt
-				self.postTweet(txt)
-		if self.debug is True:
-			print "Creating new rssfeed timer for %s" % feedUrl
+				#self.postTweet(txt)
+				threading.Thread(None, self.postTweet, (txt,)).start()
 		self.timers[timerIndex]=threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (timerIndex, feedUrl))
-		if self.debug is True:
-			print "Starting new directmessage timer for %s" % feedUrl
 		self.timers[timerIndex].start()
 	
 	def checkDirectMessages(self):
@@ -201,7 +113,7 @@ class rss2twitter():
 		while posted is not True:
 			try:
 				if self.debug is True:
-					print "Queueing tweet"
+					print "Queueing tweet %s" % hashlib.sha1(msgText).hexdigest()[0:6]
 				self.twitQueue.apply(self.twitApi.PostUpdate, msgText)
 			except urllib2.HTTPError, err:
 				errno = int(err.info().items()[0][1][0:3])
@@ -221,7 +133,7 @@ class rss2twitter():
 					raise twitter.TwitterError(err.info().items()[0][1])
 			else:
 				if self.debug is True:
-					print "Tweet posted"
+					print "Tweet %s posted" % hashlib.sha1(msgText).hexdigest()[0:6]
 				posted = True
 	
 	def sendDirectMessage(self, msgText):
@@ -238,24 +150,19 @@ class rss2twitter():
 		if doDirect==True:
 			if self.debug is True:
 				print "Creating first directmessage timer as timer %s" % len(self.timers)
-			self.timers.append(threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, (len(self.timers),)))
+			self.timers.append(threading.Timer(1, self.doDirectMessages, (len(self.timers),)))
 		if self.feeds is not None:
 			for f in self.feeds:
 				if self.debug is True:
 					print "Creating first rssfeed timer for %s as timer %s" % (f, len(self.timers),)
-				self.timers.append(threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (len(self.timers), f)))
+				self.timers.append(threading.Timer(1, self.doRSSFeed, (len(self.timers), f)))
 		if self.debug is True:
 			print "Creating first timestamp timer as timer %s" % len(self.timers)
-			self.timers.append(threading.Timer(5, self.printTimestamp, (len(self.timers),)))
+			self.timers.append(threading.Timer(1, self.printTimestamp, (len(self.timers),)))
 		for t in self.timers:
 			if self.debug is True:
 				print "Starting timer"
 			t.start()
-		try:
-			self.twitQueue.run()
-		except KeyboardInterrupt:
-			for t in self.timers:
-				t.cancel()
 	
 	def wasPublished(self, feedTable, feedEntry, storeHistory=True):
 		"""Checks to see if a feed item has been previously published"""
@@ -282,20 +189,9 @@ class rss2twitter():
 			c.close()
 			return False
 	
-	def printTimestamp(self, timerIndex, thisTime=-1.):
+	def printTimestamp(self, timerIndex):
 		"""pretty print's a timestamp, optionally the time specified"""
-		print thisTime
-		if thisTime < 0:
-			print "Current Time: %s" % time.asctime()
-			if self.debug is True:
-				print "Queueing second timestamp print."
-			self.twitQueue.apply(self.printTimestamp, (timerIndex, time.time(),))
-			if self.debug is True:
-				print "Creating new timer."
-			self.timers[timerIndex]=threading.Timer(5, self.printTimestamp, (timerIndex,))
-			if self.debug is True:
-				print "Starting new timer."
-			self.timers[timerIndex].start()
-		else:
-			print "Queue'd Time: %s" % time.asctime(time.localtime(thisTime))
+		print "Current Time: %s" % time.asctime()
+		self.timers[timerIndex]=threading.Timer(5, self.printTimestamp, (timerIndex,))
+		self.timers[timerIndex].start()
 	
