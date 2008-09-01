@@ -11,16 +11,16 @@ import threading, Queue
 # 3rd Party
 import twitter
 import sqlite3
-import memcache
 import feedparser
 
 # Constants
-DIRECT_MESSAGE_DELAY = 300
-RSS_FEED_DELAY = 60
+DIRECT_MESSAGE_DELAY = 300 # 5 mins
+RSS_FEED_DELAY = 60 # 1 min
+POST_LENGTH = 124 # though twitter allows 140 characters, they seem to truncate stuff larger than about 125 or so for online display
 
 def shorten(url):
-	apiUrl = 'http://tweetburner.com/links'
-	values = {'link[url]' : url,}
+	apiUrl = 'http://bit.ly/api'
+	values = {'url' : url,}
 	data = urllib.urlencode(values)
 	req = urllib2.Request(apiUrl, data)
 	response = urllib2.urlopen(req)
@@ -41,13 +41,14 @@ class Serializer(threading.Thread):
 	def __init__(self, **kwds):
 		super(Serializer, self).__init__(**kwds)
 		self.setDaemon(1)
+		self.setName('Serializer')
 		self.workRequestQueue = Queue.Queue()
 		self.resultQueue = Queue.Queue()
 		self.start()
 	
 	def apply(self, callable, *args, **kwds):
 		"""called by other threads as callable would be"""
-		self.workRequestQueue.put((callable, args, kwds))		
+		self.workRequestQueue.put((callable, args, kwds))
 		return self.resultQueue.get()
 	
 	def run(self):
@@ -64,7 +65,8 @@ class rss2twitter():
 	twitApi = twitter.Api()
 	debug = False
 		
-	def __init__(self, username, password, feeds=None, cacheDir = './'):
+	def __init__(self, username, password, feeds=None, cacheDir = './', tag=True):
+		self.tag = tag
 		self.feeds = feeds
 		self.twitApi.SetCredentials(username, password)
 		self.feedHistory = os.path.join(cacheDir, 'db')
@@ -83,6 +85,7 @@ class rss2twitter():
 	def doDirectMessages(self, timerIndex):
 		"""Process Direct Messages, queue posts"""
 		self.timers[timerIndex]=threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, (timerIndex,))
+		self.timers[timerIndex].setName('DirectMessageTimer')
 		self.timers[timerIndex].start()
 	
 	def doRSSFeed(self, timerIndex, feedUrl):
@@ -90,17 +93,34 @@ class rss2twitter():
 		if self.debug is True:
 			print "processing %s" % feedUrl
 		feed = feedparser.parse(feedUrl)
-		feedtitle = feed.feed.title
+		if(feed.feed.title):
+			feedtitle = feed.feed.title
 		for e in feed.entries:
 			if self.wasPublished(hashlib.sha1(feedUrl).hexdigest(), e) is not True:
-				tag = "New post from %s" % feedtitle
+				if (self.tag == True and feedtitle):
+					txt  = "New post from %s: " % feedtitle
+				elif (self.tag == False or self.tag == ""):
+					txt = ""
+				else:
+					if(self.tag.find('%') < 0 or not feedtitle):
+						txt = "%s:" % self.tag
+					else:
+						txt = "%s:" % self.tag % feedtitle
+				if (e.title is not ""):
+					txt = "%s %s:" % (txt, e.title)
 				link = shorten(e.link)
-				txt = "%s: %s: %s [%s]" % (tag, e.title, blurb(e.summary, 140 - (len(e.title) + len(link) + len(tag) + 7)), link)
+				txtr = "%s %s [%s]"
+				txt  = (txtr % (txt, blurb(e.summary, POST_LENGTH - len((txtr % (txt, "", link)).strip())), link)).strip()
 				if self.debug:
 					print "----\n%s" % txt
+					print "Length %s" % len(txt)
 				#self.postTweet(txt)
-				threading.Thread(target=self.postTweet, args=(txt,)).start()
+				#threading.Thread(target=self.postTweet, name="postTweet-%s"%hashlib.sha1(txt).hexdigest()[0:6], args=(txt,)).start()
+				if self.debug is True:
+					print "Queueing tweet %s in thread %s." % (hashlib.sha1(txt).hexdigest()[0:6], threading.currentThread().getName())
+				self.twitQueue.apply(self.postTweet, txt)
 		self.timers[timerIndex]=threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (timerIndex, feedUrl))
+		self.timers[timerIndex].setName("RSSFeedTimer-%s" % timerIndex)
 		self.timers[timerIndex].start()
 	
 	def checkDirectMessages(self):
@@ -111,11 +131,10 @@ class rss2twitter():
 		"""Post a Tweet"""
 		posted = False
 		while posted is not True:
-			if self.debug is True:
-				print "Queueing tweet %s" % hashlib.sha1(msgText).hexdigest()[0:6]
 			try:
-				self.twitQueue.apply(self.twitApi.PostUpdate, msgText)
-			except HTTPError, err:
+				#self.twitQueue.apply(self.twitApi.PostUpdate, msgText)
+				self.twitApi.PostUpdate(msgText)
+			except urllib2.HTTPError, err:
 				errno = int(err.info().items()[0][1][0:3])
 				if errno == 401:
 					if self.debug:
@@ -133,7 +152,7 @@ class rss2twitter():
 					raise twitter.TwitterError(err.info().items()[0][1])
 			else:
 				if self.debug is True:
-					print "Tweet %s posted" % hashlib.sha1(msgText).hexdigest()[0:6]
+					print "Tweet %s posted in thread %s." % (hashlib.sha1(msgText).hexdigest()[0:6], threading.currentThread().getName())
 				posted = True
 	
 	def sendDirectMessage(self, msgText):
@@ -144,7 +163,7 @@ class rss2twitter():
 		"""Delete a DirectMessage"""
 		pass
 	
-	def run(self, doDirect=True, debug=False):
+	def run(self, doDirect=False, debug=False):
 		"""Start processing everything"""
 		self.debug = debug
 		if doDirect==True:
@@ -176,7 +195,8 @@ class rss2twitter():
 			c.close()
 			if self.debug is True:
 				print "published"
-			return True
+			#return True
+			return False
 		else:
 			if self.debug is True:
 				print "unpublished"
@@ -193,5 +213,6 @@ class rss2twitter():
 		"""pretty print's a timestamp, optionally the time specified"""
 		print "Current Time: %s | Queue Size: %s" % (time.asctime(), self.twitQueue.workRequestQueue.qsize())
 		self.timers[timerIndex]=threading.Timer(5, self.printTimestamp, (timerIndex,))
+		self.timers[timerIndex].setName("TimestampTimer-%s" % timerIndex)
 		self.timers[timerIndex].start()
 	
