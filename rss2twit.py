@@ -26,8 +26,10 @@ def shorten(url):
 	response = urllib2.urlopen(req)
 	return response.read()
 
-def blurb(text, length, addDots=True):
+def blurb(text, length, addDots=True, debug=False):
 	"""Reduces a text to length or less one word at a time, optionally adding..."""
+	if debug:
+		print "Blurb |%s|" % text
 	if len(text) <= length:
 		return text
 	else:
@@ -35,9 +37,9 @@ def blurb(text, length, addDots=True):
 			text = text[0:length]
 		(t,u,v) = text.rpartition(' ')
 		if addDots is True:
-			return '%s...' % blurb(t, length-3, False)
+			return '%s...' % blurb(t, length-3, False, debug)
 		else:
-			return blurb(t, length, False)
+			return blurb(t, length, False, debug)
 
 class Serializer(threading.Thread):
 	def __init__(self, **kwds):
@@ -109,7 +111,7 @@ class rss2twitter():
 					txt = "%s %s:" % (txt, e.title)
 				link = shorten(e.link)
 				txtr = "%s %s [%s]"
-				txt  = (txtr % (txt, blurb(e.summary, POST_LENGTH - len((txtr % (txt, "", link)).strip())), link)).strip()
+				txt  = (txtr % (txt, blurb(e.summary, POST_LENGTH - len((txtr % (txt, "", link)).strip()), debug=True), link)).strip()
 				if self.debug:
 					print "----\n%s" % txt
 					print "Length %s" % len(txt)
