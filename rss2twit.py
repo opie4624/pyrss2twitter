@@ -30,7 +30,7 @@ def blurb(text, length, addDots=True, debug=False):
 	"""Reduces a text to length or less one word at a time, optionally adding..."""
 	if debug:
 		print "Blurb |%s|" % text
-	if len(text) <= length:
+	if len(text) <= length or len(text) == 0:
 		return text
 	else:
 		if len(text) > length:
@@ -137,6 +137,8 @@ class rss2twitter():
 				self.twitApi.PostUpdate(msgText)
 			except urllib2.HTTPError, err:
 				errno = int(err.info().items()[0][1][0:3])
+				if self.debug:
+					print "Error no: %s" % errno
 				if errno == 401:
 					if self.debug:
 						print "Rate limited, sleeping for 5 mins"
