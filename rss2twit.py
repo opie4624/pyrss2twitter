@@ -31,6 +31,8 @@ def blurb(text, length, addDots=True):
 	if len(text) <= length:
 		return text
 	else:
+		if len(text) > length:
+			text = text[0:length]
 		(t,u,v) = text.rpartition(' ')
 		if addDots is True:
 			return '%s...' % blurb(t, length-3, False)
