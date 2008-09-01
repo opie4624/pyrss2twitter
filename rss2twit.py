@@ -198,8 +198,7 @@ class rss2twitter():
 			c.close()
 			if self.debug is True:
 				print "published"
-			#return True
-			return False
+			return True
 		else:
 			if self.debug is True:
 				print "unpublished"
