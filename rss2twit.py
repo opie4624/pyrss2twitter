@@ -65,7 +65,7 @@ class rss2twitter():
 	twitApi = twitter.Api()
 	debug = False
 		
-	def __init__(self, username, password, feeds=None, cacheDir = './', tag=True):
+	def __init__(self, username, password, feeds=None, cacheDir = './', tag="New %s post"):
 		self.tag = tag
 		self.feeds = feeds
 		self.twitApi.SetCredentials(username, password)
@@ -93,19 +93,16 @@ class rss2twitter():
 		if self.debug is True:
 			print "processing %s" % feedUrl
 		feed = feedparser.parse(feedUrl)
-		if(feed.feed.title):
-			feedtitle = feed.feed.title
+		feedtitle = feed.feed.title
 		for e in feed.entries:
 			if self.wasPublished(hashlib.sha1(feedUrl).hexdigest(), e) is not True:
-				if (self.tag == True and feedtitle):
-					txt  = "New post from %s: " % feedtitle
-				elif (self.tag == False or self.tag == ""):
+				if (self.tag == False or self.tag == ""):
 					txt = ""
 				else:
-					if(self.tag.find('%') < 0 or not feedtitle):
-						txt = "%s:" % self.tag
-					else:
+					if(self.tag.find('%') > -1):
 						txt = "%s:" % self.tag % feedtitle
+					else:
+						txt = "%s:" % self.tag
 				if (e.title is not ""):
 					txt = "%s %s:" % (txt, e.title)
 				link = shorten(e.link)
@@ -139,15 +136,15 @@ class rss2twitter():
 				if errno == 401:
 					if self.debug:
 						print "Rate limited, sleeping for 5 mins"
-					sleep(300)
+					time.sleep(300)
 				elif errno == 502:
 					if self.debug:
 						print "Server upgrade, sleeping for 15 mins"
-					sleep(900)
+					time.sleep(900)
 				elif errno == 503:
 					if self.debug:
 						print "Server busy, sleeping for 30 mins"
-					sleep(1800)
+					time.sleep(1800)
 				else:
 					raise twitter.TwitterError(err.info().items()[0][1])
 			else:
