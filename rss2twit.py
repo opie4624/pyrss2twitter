@@ -64,12 +64,12 @@ class Serializer(threading.Thread):
 class rss2twitter():
 	"""Takes a tuple of RSS feeds and twitter credentials and reads one, posts to the other."""
 		
-	timers = []
-	twitQueue = Serializer()
-	twitApi = twitter.Api()
 	debug = False
 		
 	def __init__(self, username, password, feeds=None, cacheDir = './', tag="New %s post"):
+		self.timers = []
+		self.twitQueue = Serializer()
+		self.twitApi = twitter.Api()
 		self.tag = tag
 		self.feeds = feeds
 		self.twitApi.SetCredentials(username, password)
