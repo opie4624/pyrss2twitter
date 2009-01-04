@@ -11,7 +11,7 @@ import threading, Queue
 # 3rd Party
 import twitter
 import sqlite3
-import memcache
+#import memcache
 import feedparser
 
 # Constants
@@ -82,8 +82,8 @@ class rss2twitter():
 	
 	def doDirectMessages(self, timerIndex):
 		"""Process Direct Messages, queue posts"""
-		self.timers[timerIndex]=threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, (timerIndex,))
-		self.timers[timerIndex].start()
+		#self.timers[timerIndex]=threading.Timer(DIRECT_MESSAGE_DELAY, self.doDirectMessages, (timerIndex,))
+		#self.timers[timerIndex].start()
 	
 	def doRSSFeed(self, timerIndex, feedUrl):
 		"""Process RSS Feed, queue posts for new items"""
@@ -100,8 +100,8 @@ class rss2twitter():
 					print "----\n%s" % txt
 				#self.postTweet(txt)
 				threading.Thread(target=self.postTweet, args=(txt,)).start()
-		self.timers[timerIndex]=threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (timerIndex, feedUrl))
-		self.timers[timerIndex].start()
+		#self.timers[timerIndex]=threading.Timer(RSS_FEED_DELAY, self.doRSSFeed, (timerIndex, feedUrl))
+		#self.timers[timerIndex].start()
 	
 	def checkDirectMessages(self):
 		"""Check for new Direct Messages"""
@@ -156,9 +156,6 @@ class rss2twitter():
 				if self.debug is True:
 					print "Creating first rssfeed timer for %s as timer %s" % (f, len(self.timers),)
 				self.timers.append(threading.Timer(1, self.doRSSFeed, (len(self.timers), f)))
-		if self.debug is True:
-			print "Creating first timestamp timer as timer %s" % len(self.timers)
-			self.timers.append(threading.Timer(1, self.printTimestamp, (len(self.timers),)))
 		for t in self.timers:
 			if self.debug is True:
 				print "Starting timer"
@@ -188,10 +185,4 @@ class rss2twitter():
 				conn.commit()
 			c.close()
 			return False
-	
-	def printTimestamp(self, timerIndex):
-		"""pretty print's a timestamp, optionally the time specified"""
-		print "Current Time: %s | Queue Size: %s" % (time.asctime(), self.twitQueue.workRequestQueue.qsize())
-		self.timers[timerIndex]=threading.Timer(5, self.printTimestamp, (timerIndex,))
-		self.timers[timerIndex].start()
 	
